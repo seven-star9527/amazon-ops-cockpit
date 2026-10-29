@@ -43,9 +43,8 @@ ASIN 来源接口无分页参数，实测非空 `source_list` 的顶层 `total` 
 | 本地产品箱规与MOQ | `/erp/sc/routing/data/local_inventory/productInfo` | `cg_box_pcs`是标准箱规；MOQ按supplier_quote/quotes/step_prices分层 | 多供应商、多阶梯不能压成一个全局MOQ；个人参数不能覆盖来源事实 |
 | 采购未结 | `/erp/sc/routing/data/local_inventory/purchaseOrderList` | `quantity_real`、`quantity_receive`、`quantity_entry`、`expect_arrive_time`分列 | 待到货不等于已发货；关闭、作废、退货处理验收前不重算总采购缺口 |
 | 实际采购收货 | `/erp/sc/routing/deliveryReceipt/PurchaseReceiptOrder/getOrderList` | 头部receive_time、行product_receive_num、seller_id、business_order_sn+order_item_id | seller_id=0留在未分配池，不能通过SKU猜店铺；部分收货不代表整单完成 |
-| 系统入库 | `/erp/sc/routing/storage/inbound/getOrders` | opt_time、inbound_time、product_total、seller_id、purchase_item_id分别留存 | 自定义入库日期不是系统操作时间；收货与入库不能重复增加库存 |
 
-附带材料记录了此前 API 项目的真实抽样验证，但它是历史证据，不代表本项目已经实现这些接口，也不代表当前数据仍相同。
+系统入库明细接口 `/erp/sc/routing/storage/inbound/getOrders` **尚未接入本项目**。附带会话中对它的验证属于此前 API 项目的历史证据。当前仅从采购订单保留 `quantity_entry` 入库数量，不含独立入库单明细、系统操作时间或入库日期，不能把它描述成已经实现了入库接口。四类已接入数据的来源与下游影响见 [本批数据影响清单](lingxing-api-impact-alpha2.md)。
 
 ## 增量策略
 
