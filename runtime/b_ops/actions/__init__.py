@@ -1,0 +1,1 @@
+"""Guarded advertising action lifecycle."""

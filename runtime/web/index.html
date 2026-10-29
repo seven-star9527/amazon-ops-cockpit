@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>亚马逊运营 · 库存与广告工作台</title>
+  <style>__STYLE__</style>
+</head>
+<body>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand"><button id="brand-theme" class="brand-mark" type="button" aria-label="切换到日间主题" title="切换日间/夜间"><svg class="brand-logo moon" viewBox="0 0 40 40" aria-hidden="true"><path d="M26.5 5.5a14.5 14.5 0 1 0 8 24.8A12.5 12.5 0 0 1 26.5 5.5Z" fill="currentColor"/><path d="m30 9 1.1 2.4L33.7 12l-2.6 1.1L30 15.6l-1.1-2.5L26.3 12l2.6-1.1L30 9Z" fill="currentColor" opacity=".9"/></svg><svg class="brand-logo sun" viewBox="0 0 40 40" aria-hidden="true"><circle cx="20" cy="20" r="7" fill="currentColor"/><g stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 4v5M20 31v5M4 20h5M31 20h5M8.7 8.7l3.5 3.5M27.8 27.8l3.5 3.5M31.3 8.7l-3.5 3.5M12.2 27.8l-3.5 3.5"/></g></svg></button><div><strong>亚马逊运营</strong><small>库存与广告工作台</small></div><button id="sidebar-toggle" class="sidebar-toggle" type="button" aria-label="收起商品目录" title="收起/展开商品目录">«</button></div>
+      <div id="side-modes" class="side-modes"><button type="button" class="side-mode" data-view="product">单品诊断</button><button type="button" class="side-mode" data-view="queue">广告待办</button><button type="button" class="side-mode" data-view="inventory-queue">库存待办</button></div>
+      <label class="control-label" for="shop-filter">店铺</label>
+      <select id="shop-filter" class="control"></select>
+      <div id="source-line" class="source-line"></div>
+      <div id="catalog-tabs" class="catalog-tabs"></div>
+      <label class="sr-only" for="product-search">搜索产品</label>
+      <input id="product-search" class="control search" type="search" placeholder="搜索中文品名或 ASIN">
+      <div id="catalog" class="catalog" aria-label="产品目录"></div>
+      <div class="side-footer"><span class="dot"></span><span id="run-caption">正在读取批次…</span></div>
+    </aside>
+    <main class="main">
+      <header class="topbar"><div><span class="eyebrow">店铺 · ASIN · 决策</span><h1>运营问题工作台</h1><div id="view-switch" class="view-switch" aria-label="工作视图"></div></div><div class="topbar-meta"><span id="coverage-badge"></span><span id="review-mode" class="read-only">只读快照</span></div></header>
+      <div id="app" class="app"></div>
+    </main>
+  </div>
+  <div id="decision-drawer" class="decision-drawer-host" hidden></div>
+  <div id="verdict-tip" class="verdict-tip" role="tooltip" hidden></div>
+  <div id="hover-tip" class="hover-tip" hidden></div>
+  <script id="board-data" type="application/json">__DATA__</script>
+  <script>__REVIEW__</script>
+  <script>__MODEL__</script>
+  <script>__PMC_ENGINE__</script>
+  <script>__APP__</script>
+</body>
+</html>

@@ -1,0 +1,4 @@
+interface:
+  display_name: "亚马逊运营工作台"
+  short_description: "广告/库存/Listing 完整看板、审核与写回"
+  default_prompt: "使用 $amazon-ops-cockpit 打开完整亚马逊运营看板：广告、库存、Listing 三个板块。先运行 python scripts/run_cockpit.py --check；有完整看板数据时再 --serve。不要使用旧 dashboard_server.py 或 run_analysis.py 冒充完整看板。"
