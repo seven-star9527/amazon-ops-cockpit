@@ -25,6 +25,8 @@ MCP 凭据由宿主连接器或进程环境注入，不从其他应用的历史�
 
 版本见 [VERSION](VERSION)，变更见 [CHANGELOG](CHANGELOG.md)。预览标签表示代码基线，不表示生产发布或南斗已集成。
 
+后续改造见 [领星 API 数据契约](references/lingxing-api-data-contract.md) 和 [南斗接入实施计划](references/nandou-integration-plan.md)。`main` 保留只读基线，`dev/lingxing-api-foundation` 为本批 API 改造开发分支，未合入主线。
+
 ```powershell
 python scripts/bootstrap.py --data-dir D:/AmazonOpsData --test
 D:/AmazonOpsData/venvs/readonly-v1/Scripts/python.exe -m pytest runtime/tests runtime/pmc/tests -q

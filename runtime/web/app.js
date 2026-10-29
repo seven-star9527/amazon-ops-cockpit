@@ -1738,7 +1738,15 @@
   function pmcEtaCard(current) {
     const eta=board.inventory_batch?.metadata?.etaFile||{};
     const recon=current.etaReconciliation||{};
-    return `<section class="panel pmc-side-card"><div class="pmc-side-head"><span>ETA 与来源</span><span class="pmc-chip ${eta.status==='loaded'?'good':'danger'}">${eta.status==='loaded'?'已读取':'缺失'}</span></div><div class="pmc-eta-grid"><div><small>确认在途</small><strong>${fmt(current.timeline?.confirmedQty)}</strong></div><div><small>未知 ETA</small><strong>${fmt(current.timeline?.unknownEtaQty)}</strong></div><div><small>台账 / 实时</small><strong>${fmt(recon.ledgerQty)} / ${fmt(recon.liveQty)}</strong></div><div><small>提示</small><strong>${eta.reminder?'有':'无'}</strong></div></div><p class="pmc-side-foot">货件文件 ${escapeHtml(eta.sourceName||'未提供')}${eta.lastUpdatedAt?` · 更新 ${escapeHtml(eta.lastUpdatedAt)}`:''}。缺 ETA 的在途只做提示，不进入确认曲线。</p></section>`;
+    const api=current.basis?.supplyEvidence||current.supplyEvidence;
+    const apiRows=api?.items||[];
+    const apiGaps=apiRows.filter(item=>item.state!=='verified').length;
+    const read=api?api.state==='verified':eta.status==='loaded';
+    const label=api?(read?'API 已读取':'API 已读 · ETA 待补'):(read?'已读取':'缺失');
+    const source=api
+      ? `领星 API：${apiRows.length} 个货件，${apiGaps} 个到仓日期待复核${api.source_response_time?` · 来源响应 ${escapeHtml(api.source_response_time)}`:''}`
+      : `货件文件 ${escapeHtml(eta.sourceName||'未提供')}${eta.lastUpdatedAt?` · 更新 ${escapeHtml(eta.lastUpdatedAt)}`:''}`;
+    return `<section class="panel pmc-side-card"><div class="pmc-side-head"><span>ETA 与来源</span><span class="pmc-chip ${read?'good':'danger'}">${label}</span></div><div class="pmc-eta-grid"><div><small>确认在途</small><strong>${fmt(current.timeline?.confirmedQty)}</strong></div><div><small>未知 ETA</small><strong>${fmt(current.timeline?.unknownEtaQty)}</strong></div><div><small>台账 / 实时</small><strong>${fmt(recon.ledgerQty)} / ${fmt(recon.liveQty)}</strong></div><div><small>提示</small><strong>${(api?apiGaps>0:eta.reminder)?'有':'无'}</strong></div></div><p class="pmc-side-foot">${source}。缺失或过期 ETA 的在途只做提示，不进入确认曲线。</p></section>`;
   }
   function pmcConfidenceCard(current) {
     const dims=current.confidenceDimensions;

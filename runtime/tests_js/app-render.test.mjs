@@ -15,7 +15,7 @@ function createView(board) {
   const window={B_REVIEW:null,B_SUPPLEMENTS:{},innerWidth:1400,innerHeight:900};
   const model=fs.readFileSync(new URL('../web/model.mjs',import.meta.url),'utf8').replaceAll('export function ','function ');
   const app=fs.readFileSync(new URL('../web/app.js',import.meta.url),'utf8')
-    .replace(/  initialize\(\);\s*\}\)\(\);\s*$/, '  window.__test={state,adActionRow,keywordRowHtml,bidReviewContent,bidReviewItems,competitorPanel,productKeywords,trackingManagePanel,decisionDrawerHtml:typeof decisionDrawerHtml==="function"?decisionDrawerHtml:null,verdictTooltipHtml:typeof verdictTooltipHtml==="function"?verdictTooltipHtml:null,verdictTooltipPosition:typeof verdictTooltipPosition==="function"?verdictTooltipPosition:null};\n  initialize();\n})();');
+    .replace(/  initialize\(\);\s*\}\)\(\);\s*$/, '  window.__test={pmcEtaCard,state,adActionRow,keywordRowHtml,bidReviewContent,bidReviewItems,competitorPanel,productKeywords,trackingManagePanel,decisionDrawerHtml:typeof decisionDrawerHtml==="function"?decisionDrawerHtml:null,verdictTooltipHtml:typeof verdictTooltipHtml==="function"?verdictTooltipHtml:null,verdictTooltipPosition:typeof verdictTooltipPosition==="function"?verdictTooltipPosition:null};\n  initialize();\n})();');
   vm.runInNewContext(`${model}\n${app}`,{document,window}, {filename:'board-app.js'});
   return {...window.__test,element};
 }
@@ -261,4 +261,14 @@ test('sidebar uses compact provenance disclosure instead of fixed introduction',
   const app=createView(board);
   assert.match(app.element('source-line').innerHTML,/<summary[^>]*>[^<]*来源有缺口/);
   assert.equal(app.element('run-caption').textContent,'数据截至 2026-10-13');
+});
+
+
+test('API ETA evidence is displayed without pretending it came from a shipment workbook', () => {
+  const view=createView(board);
+  const html=view.pmcEtaCard({basis:{supplyEvidence:{state:'partial',source_response_time:'2026-10-29 14:36:00',items:[{state:'overdue_eta'},{state:'missing_eta'}]}}});
+  assert.match(html,/API 已读 · ETA 待补/);
+  assert.match(html,/2 个货件，2 个到仓日期待复核/);
+  assert.doesNotMatch(html,/货件文件/);
+  assert.match(html,/缺失或过期 ETA/);
 });
