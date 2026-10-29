@@ -51,7 +51,9 @@ def test_uses_only_fba_eta_and_preserves_stock_and_residual():
 @pytest.mark.parametrize("orders,state", [
     ([dispatch(eta="")], "missing_eta"), ([dispatch(eta="2026-10-01")], "overdue_eta"),
     ([dispatch(sid=2)], "unmatched_dispatch"), ([dispatch(asin="B000000002")], "unmatched_dispatch"),
-    ([dispatch(status=3)], "unmatched_dispatch"),
+    ([dispatch(status=3)], "void"),
+    ([dispatch(status=-1)], "waiting_pick"), ([dispatch(status=0)], "waiting_dispatch"),
+    ([dispatch(status=2)], "completed"),
     ([dispatch(), dispatch(sn="SP2")], "ambiguous_dispatch"),
 ])
 def test_incomplete_or_cross_store_evidence_never_confirms(orders, state):
@@ -128,3 +130,26 @@ def test_rejects_product_not_in_snapshot_and_unauthorized_snapshot():
     s = snapshot(); s["records"].append({"storeId": "2", "asin": ASIN})
     with pytest.raises(SupplyError, match="SNAPSHOT_SCOPE_DENIED"):
         apply_supply(s, collect(), allowed_sids=[1])
+
+
+def test_zero_current_transit_never_confirms_old_positive_shipment():
+    s=snapshot();s['records'][0]['inventoryLayers']['shippedRaw']=0
+    out=apply_supply(s,collect(),allowed_sids=[1])
+    assert not any(i['confirmed'] for i in out['records'][0]['inbound'])
+    assert out['metadata']['scope']['etaCoveredRows']==0
+
+
+def test_planned_shipment_absent_from_source_still_gets_exact_dispatch_link():
+    def read(path,body):
+        return source([]) if path==SOURCE_PATH else {'code':0,'data':{'list':[dispatch(status=-1)],'total':1}}
+    result=collect_supply(read,targets=[('1',ASIN)],allowed_sids=[1],as_of=DAY,
+        shipment_rows=[{'sid':'1','asin':ASIN,'shipment_id':'FBA1','status':'READY_TO_SHIP','local_shipped_qty':0,'received_qty':0}])
+    item=result['records'][0]['items'][0]
+    assert item['shipment_sn']=='SP1' and item['state']=='waiting_pick' and item['quantity']==0
+
+
+def test_repeated_eta_attachment_preserves_order_of_other_quality_gaps():
+    out=apply_supply(snapshot(),collect(orders=[dispatch(eta='')]),allowed_sids=[1])
+    out['records'][0]['dataGaps'].append('purchase window incomplete')
+    again=apply_supply(out,collect(orders=[dispatch(eta='')]),allowed_sids=[1])
+    assert again['records']==out['records']

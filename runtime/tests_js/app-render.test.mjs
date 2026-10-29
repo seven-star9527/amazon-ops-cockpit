@@ -15,7 +15,7 @@ function createView(board) {
   const window={B_REVIEW:null,B_SUPPLEMENTS:{},innerWidth:1400,innerHeight:900};
   const model=fs.readFileSync(new URL('../web/model.mjs',import.meta.url),'utf8').replaceAll('export function ','function ');
   const app=fs.readFileSync(new URL('../web/app.js',import.meta.url),'utf8')
-    .replace(/  initialize\(\);\s*\}\)\(\);\s*$/, '  window.__test={pmcEtaCard,state,adActionRow,keywordRowHtml,bidReviewContent,bidReviewItems,competitorPanel,productKeywords,trackingManagePanel,decisionDrawerHtml:typeof decisionDrawerHtml==="function"?decisionDrawerHtml:null,verdictTooltipHtml:typeof verdictTooltipHtml==="function"?verdictTooltipHtml:null,verdictTooltipPosition:typeof verdictTooltipPosition==="function"?verdictTooltipPosition:null};\n  initialize();\n})();');
+    .replace(/  initialize\(\);\s*\}\)\(\);\s*$/, '  window.__test={pmcSupplyFacts,pmcEtaCard,state,adActionRow,keywordRowHtml,bidReviewContent,bidReviewItems,competitorPanel,productKeywords,trackingManagePanel,decisionDrawerHtml:typeof decisionDrawerHtml==="function"?decisionDrawerHtml:null,verdictTooltipHtml:typeof verdictTooltipHtml==="function"?verdictTooltipHtml:null,verdictTooltipPosition:typeof verdictTooltipPosition==="function"?verdictTooltipPosition:null};\n  initialize();\n})();');
   vm.runInNewContext(`${model}\n${app}`,{document,window}, {filename:'board-app.js'});
   return {...window.__test,element};
 }
@@ -271,4 +271,16 @@ test('API ETA evidence is displayed without pretending it came from a shipment w
   assert.match(html,/2 个货件，2 个到仓日期待复核/);
   assert.doesNotMatch(html,/货件文件/);
   assert.match(html,/缺失或过期 ETA/);
+});
+
+
+test('supply drawer separates actual receipt, estimates, components and escapes source fields',()=>{
+  const view=createView(board);
+  const html=view.pmcSupplyFacts({purchaseEvidence:{window_start:'2026-01-01',window_end:'2026-10-29',state:'complete_window',allocation:'shared_sku_reference_only',items:[],component_items:[],product_rules:[{sku:'<img src=x>',carton_qty:0,moq:0,components:[]}],receipts:[{order_sn:'CR1',actual_qty:40,actual_time:'2026-10-23 18:50:10',expected_date:'2026-11-03'}]},fbaShipmentEvidence:[]});
+  assert.match(html,/2026-10-23 18:50:10（实际）/);
+  assert.match(html,/2026-11-03（预计）/);
+  assert.match(html,/不按 ASIN 重复汇总/);
+  assert.match(html,/不再次增加当前库存/);
+  assert.match(html,/源值 0，待确认/);
+  assert.doesNotMatch(html,/<img src=x>/);
 });

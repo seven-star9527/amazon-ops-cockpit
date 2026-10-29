@@ -368,3 +368,14 @@ test('a zero-source stockout points at a procurement ready date instead of a zer
   assert.match(result.nextAction, /2026-11-29 齐套/);
   assert.doesNotMatch(result.nextAction, /日销上限/);
 });
+
+
+test('domestic procurement dates never become FBA relief and closed receipts cannot invent dates',()=>{
+  const record={id:'supply-test',history:Array(30).fill(10),fbaAvailable:10,inventoryLayers:{sellable:10,local:0,overseas:0,procurementOpen:50,shippedRaw:0},purchaseEvidence:{},procurementLots:[],purchaseLeadDays:40,transitDays:60};
+  const closed=analyzeInventoryRecord(record,{asOf:'2026-10-29'});
+  assert.equal(closed.bridgePlan.procurementReadyDate,null);
+  const open=analyzeInventoryRecord({...record,procurementLots:[{qty:50,date:'2026-11-03'}]},{asOf:'2026-10-29'});
+  assert.equal(open.bridgePlan.procurementReadyDate,'2026-11-03');
+  assert.notEqual(open.bridgePlan.reliefSource,'采购齐套');
+  assert.equal(open.timeline.confirmedQty,0);
+});

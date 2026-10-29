@@ -909,11 +909,15 @@ export function analyzeInventoryRecord(record, options = {}) {
             ? (firstBatchArrival && firstBatchArrival <= stockoutDate ? 'ready' : 'partial')
             : 'no_benefit';
   const bridgeActionable = bridgeStatus === 'ready' || bridgeStatus === 'partial';
-  const procurementReadyDate = addDays(asOf, purchaseLeadDays);
+  const apiProcurement = Boolean(record.purchaseEvidence);
+  const datedProcurement = (record.procurementLots || []).filter(lot => Number(lot.qty) > 0 && parseDate(lot.date) && lot.date >= asOf).sort((a,b)=>a.date.localeCompare(b.date));
+  const procurementReadyDate = apiProcurement
+    ? (datedProcurement[0] ? parseDate(datedProcurement[0].date) : null)
+    : addDays(asOf, purchaseLeadDays);
   const reliefCandidates = [
     ...(bridgeActionable && firstBatchArrival ? [{ date: firstBatchArrival, source: expressMode }] : []),
     ...(nextSupplyDate ? [{ date: nextSupplyDate, source: '确认在途' }] : []),
-    ...(inventoryLayers.procurementOpen > 0 ? [{ date: procurementReadyDate, source: '采购齐套' }] : []),
+    ...(!apiProcurement && inventoryLayers.procurementOpen > 0 ? [{ date: procurementReadyDate, source: '采购齐套' }] : []),
   ];
   reliefCandidates.sort((a, b) => a.date - b.date);
   const earliestRelief = reliefCandidates[0] || null;
@@ -986,7 +990,9 @@ export function analyzeInventoryRecord(record, options = {}) {
     } else if (bridgePlan.status === 'no_benefit') {
       nextAction = `${stockoutLabel}；${nextSupplyText}，断档 ${bridgePlan.gapDays} 天；今天发货最快 ${bridgePlan.arrivalDate} 才到（${expressMode} ${expressTransitDays} 天），赶不上，不建议新发；建议催这票提前或改空运`;
     } else {
-      const approval = inventoryLayers.procurementOpen > 0
+      const approval = apiProcurement
+        ? (procurementReadyDate ? `采购预计 ${formatDate(procurementReadyDate)} 到自有仓（非 FBA 到仓）` : '采购未结缺可用预计到自有仓日期，不能推算齐套')
+        : inventoryLayers.procurementOpen > 0
         ? `采购未结 ${round(inventoryLayers.procurementOpen, 0)} 件按 ${purchaseLeadDays} 天推算 ${bridgePlan.procurementReadyDate} 齐套`
         : `无在途采购，按 ${purchaseLeadDays} 天推算 ${bridgePlan.procurementReadyDate} 齐套`;
       nextAction = `${stockoutLabel}；本地与海外仓可发 0 件，断档 ${bridgePlan.gapDays} 天；${nextSupplyText}；${approval}，建议催单或改空运`;

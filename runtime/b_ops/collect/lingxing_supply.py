@@ -59,18 +59,20 @@ def _eta(sid, asin, shipment_id, dispatches, as_of):
         exact = [r for r in relations if isinstance(r, dict)
                  and str(r.get("sid")) == sid and str(r.get("asin", "")).upper() == asin
                  and str(r.get("shipment_id")) == shipment_id]
-        if exact and str(order.get("status")) == "1":
-            matches.append((str(order.get("shipment_sn") or ""), _date(order.get("expected_arrival_date"))))
+        if exact:
+            matches.append((str(order.get("shipment_sn") or ""), _date(order.get("expected_arrival_date")), str(order.get("status"))))
     matches = sorted(set(matches), key=str)
     if len(matches) != 1 or not matches[0][0]:
         return None, None, "ambiguous_dispatch" if matches else "unmatched_dispatch"
-    sn, eta = matches[0]
+    sn, eta, status = matches[0]
+    if status != "1":
+        return sn, eta, {"-1": "waiting_pick", "0": "waiting_dispatch", "2": "completed", "3": "void"}.get(status, "unknown_status")
     if not eta:
         return sn, None, "missing_eta"
     return sn, eta, "overdue_eta" if eta < as_of else "verified"
 
 
-def collect_supply(read_api, *, targets, allowed_sids, as_of, max_calls=100):
+def collect_supply(read_api, *, targets, allowed_sids, as_of, max_calls=100, shipment_rows=()):
     """Host supplies trusted current store grants and a signed POST callable.
 
     No retries, scheduling, or arbitrary API paths. Call budget counts adapter
@@ -82,6 +84,8 @@ def collect_supply(read_api, *, targets, allowed_sids, as_of, max_calls=100):
     allowed = {str(s) for s in allowed_sids if str(s).isdigit() and int(s) > 0}
     pairs = sorted({(str(sid), str(asin).upper()) for sid, asin in targets})
     if not pairs or not allowed or any(s not in allowed or not re.fullmatch(r"B[A-Z0-9]{9}", a) for s, a in pairs):
+        raise SupplyError("STORE_SCOPE_DENIED")
+    if any(str(r.get("sid")) not in allowed for r in shipment_rows):
         raise SupplyError("STORE_SCOPE_DENIED")
     if isinstance(max_calls, bool) or not isinstance(max_calls, int) or max_calls < 1:
         raise SupplyError("INVALID_CALL_BUDGET")
@@ -108,6 +112,19 @@ def collect_supply(read_api, *, targets, allowed_sids, as_of, max_calls=100):
         try:
             source_response = call(SOURCE_PATH, {"sid": int(sid), "asin": asin, "type": "2"})
             sources = _rows(source_response, "source_list")
+            sources = list(sources)
+            source_ids = {str((s.get("remark") or {}).get("shipment_id")) for s in sources}
+            # Planned shipments can be absent from the current in-transit source.
+            # Still resolve their dispatch linkage, without treating declaration as stock.
+            missing = {}
+            for line in shipment_rows:
+                shipment = line.get("shipment_id")
+                if (line.get("sid"), line.get("asin")) != (sid, asin) or shipment in source_ids or line.get("status") in {"CLOSED", "CANCELLED", "DELETED"}:
+                    continue
+                missing.setdefault(shipment, []).append(line)
+            for shipment, lines in missing.items():
+                qty = sum(max(0, (_qty(i.get("local_shipped_qty")) or 0) - (_qty(i.get("received_qty")) or 0)) for i in lines)
+                sources.append({"type": 2, "quantity": qty, "remark": {"shipment_id": shipment}})
             record["source_response_time"] = source_response.get("response_time")
             seen = set()
             for source in sources:
@@ -120,14 +137,37 @@ def collect_supply(read_api, *, targets, allowed_sids, as_of, max_calls=100):
                 error = None
                 try:
                     if key not in dispatch_cache:
-                        response = call(DISPATCH_PATH, {"sids": sid, "search_field": "shipment_id",
-                            "search_value": shipment_id, "is_delete": 0, "offset": 0, "length": 100})
-                        dispatch_cache[key] = _rows(response, "list")
+                        rows, offset, seen_orders, expected = [], 0, set(), None
+                        while True:
+                            response = call(DISPATCH_PATH, {"sids": sid, "search_field": "shipment_id",
+                                "search_value": shipment_id, "is_delete": 0, "offset": offset, "length": 100})
+                            data = response.get("data") if isinstance(response, dict) else None
+                            if response.get("code") != 0 or not isinstance(data, dict) or not isinstance(data.get("list"), list):
+                                raise SupplyError("API_SHAPE_ERROR")
+                            page = data["list"]
+                            total = _qty(data.get("total", response.get("total", len(page))))
+                            if total is None or (expected is not None and total != expected):
+                                raise SupplyError("API_INCOMPLETE_PAGE")
+                            expected = total
+                            for order in page:
+                                sn = order.get("shipment_sn") if isinstance(order, dict) else None
+                                if not sn or sn in seen_orders:
+                                    raise SupplyError("API_INCOMPLETE_PAGE")
+                                seen_orders.add(sn)
+                            rows.extend(page)
+                            offset += len(page)
+                            if offset == total:
+                                break
+                            if not page or offset > total:
+                                raise SupplyError("API_INCOMPLETE_PAGE")
+                        dispatch_cache[key] = rows
                     sn, eta, state = _eta(sid, asin, shipment_id, dispatch_cache[key], as_of)
                 except SupplyError as exc:
                     sn, eta, state, error = None, None, "query_failed", str(exc)
                 record["items"].append({"shipment_id": shipment_id, "shipment_sn": sn,
-                    "quantity": quantity, "fba_arrival_date": eta, "state": state})
+                    "quantity": quantity, "fba_arrival_date": eta, "state": state,
+                    "relation_state": "matched" if sn else "ambiguous" if state == "ambiguous_dispatch" else "unmatched",
+                    "eta_state": "overdue" if eta and eta < as_of else "present" if eta else "missing"})
                 if state != "verified":
                     record["state"] = "partial"
                 if error:
@@ -175,13 +215,18 @@ def apply_supply(snapshot, supply, *, allowed_sids):
                 raise SupplyError("INVALID_SUPPLY_ITEM")
             seen.add(shipment)
             eta = _date(item.get("fba_arrival_date"))
-            confirmed = item.get("state") == "verified" and bool(eta) and eta >= supply["as_of"]
+            confirmed = item.get("state") == "verified" and qty > 0 and bool(eta) and eta >= supply["as_of"]
+            if item.get("state") in {"waiting_pick", "waiting_dispatch", "completed", "void", "unknown_status"}:
+                continue  # Keep the relation in evidence, never count planned/closed supply as transit.
             items.append({"date": eta, "qty": qty, "confirmed": confirmed,
                 "shipment": shipment, "status": item.get("state"),
                 "etaWindow": eta or "", "source": "领星 API / 发货单 FBA 到仓时间",
                 "dispatchOrder": item.get("shipment_sn")})
         # Preserve today's stock authority; the existing engine caps ETA at shippedRaw.
         live = _qty((record.get("inventoryLayers") or {}).get("shippedRaw"))
+        if live == 0:
+            for item in items:
+                item["confirmed"] = False
         residual = max(0, live - sum(i["qty"] for i in items)) if live is not None else 0
         if residual:
             items.append({"date": None, "qty": residual, "confirmed": False,
@@ -190,6 +235,8 @@ def apply_supply(snapshot, supply, *, allowed_sids):
         record["inbound"] = items
         ledger = sum(i["qty"] for i in items)
         confirmed_qty = sum(i["qty"] for i in items if i["confirmed"])
+        if live is not None:
+            confirmed_qty = min(confirmed_qty, live)
         record["etaReconciliation"] = {"ledgerQty": ledger, "liveQty": live,
             "confirmedQty": confirmed_qty, "overLiveQty": max(0, ledger - live) if live is not None else None,
             "orphanLedgerQty": ledger if live == 0 else 0}
@@ -198,9 +245,12 @@ def apply_supply(snapshot, supply, *, allowed_sids):
             flags["etaEvidence"] = confirmed_qty > 0 or live == 0
             record["dataCompleteness"] = round(100 * sum(bool(v) for v in flags.values()) / len(flags))
         gap = "实时在途有数量但缺可靠ETA，不用于推迟断货日"
-        record["dataGaps"] = [g for g in record.get("dataGaps", []) if g != gap]
+        record["dataGaps"] = list(dict.fromkeys(record.get("dataGaps", [])))
         if live and confirmed_qty < live:
-            record["dataGaps"].append(gap)
+            if gap not in record["dataGaps"]:
+                record["dataGaps"].append(gap)
+        else:
+            record["dataGaps"] = [g for g in record["dataGaps"] if g != gap]
         record["supplyEvidence"] = copy.deepcopy(entry)
         record["evidence"] = [e for e in record.get("evidence", []) if e.get("stage") != "API到仓"]
         record["evidence"].append({"stage": "API到仓", "source": "领星 OpenAPI",
